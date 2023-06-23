@@ -1,6 +1,6 @@
 [![dependency status](https://deps.rs/repo/github/elkowar/eww/status.svg)](https://deps.rs/repo/github/elkowar/eww)
 
-# Eww
+# Eww -- Short lived fork to utilize system tray until upstream merges
 
 <img src="./.github/EwwLogo.svg" height="100" align="left"/>
 

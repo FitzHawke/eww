@@ -1,0 +1,75 @@
+From d2e667b152cdc8119ded8b8658bf74ce817199b2 Mon Sep 17 00:00:00 2001
+From: Philipp Herzog <philipp.herzog@protonmail.com>
+Date: Thu, 8 Sep 2022 11:55:39 +0200
+Subject: [PATCH] Fix flake refactor ([#532])
+
+Problem: The exposed overlay did not work as a standalone, required `final` to be
+    overlayed with rust-overlay prior. This was caused by the
+    `mkRustToolchain` function and the way it was used in the overlay itself.
+
+Solution: Extend the passed pkgs set with the rust-overlay overlay first, to
+    gain access to the rust-bin set from arbitrary pkgs passed into the
+    `mkRustToolchain` function.
+
+    I also added some tests that depend on the packages definition,
+    which only uses the overlay exposed by self, which in turn defines
+    the build process for any pkgs passed in.
+---
+ flake.nix | 24 ++++++++++++++----------
+ 1 file changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/flake.nix b/flake.nix
+index d0973838..16cd927a 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -10,7 +10,6 @@
+     let
+       pkgsFor = system: import nixpkgs {
+         inherit system;
+-
+         overlays = [
+           self.overlays.default
+           rust-overlay.overlays.default
+@@ -18,7 +17,12 @@
+       };
+ 
+       targetSystems = [ "aarch64-linux" "x86_64-linux" ];
+-      mkRustToolchain = pkgs: pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
++      mkRustToolchain = pkgs: let
++        inherit (pkgs.lib) fix extends;
++        rpkgs = if pkgs.lib.hasAttrByPath [ "rust-bin" ] pkgs
++          then pkgs
++          else fix (extends (import rust-overlay) (self: pkgs));
++      in rpkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+     in
+     {
+       overlays.default = final: prev:
+@@ -41,14 +45,10 @@
+           eww-wayland = final.eww.override { withWayland = true; };
+         };
+ 
+-      packages = nixpkgs.lib.genAttrs targetSystems (system:
+-        let
+-          pkgs = pkgsFor system;
+-        in
+-        (self.overlays.default pkgs pkgs) // {
+-          default = self.packages.${system}.eww;
+-        }
+-      );
++      packages = nixpkgs.lib.genAttrs targetSystems (system: {
++        inherit (pkgsFor system) eww eww-wayland;
++        default = self.packages.${system}.eww;
++      });
+ 
+       devShells = nixpkgs.lib.genAttrs targetSystems (system:
+         let
+@@ -72,5 +72,9 @@
+           };
+         }
+       );
++
++      checks = nixpkgs.lib.genAttrs targetSystems (system: {
++        inherit (self.packages.${system}) eww eww-wayland;
++      });
+     };
+ }
